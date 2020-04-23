@@ -1,0 +1,15 @@
+[package]
+name = "countdownlatch-rs"
+version = "0.1.0"
+authors = ["wolf4ood <enrico.risa@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+
+
+[dev-dependencies]
+futures-executor = "0.3.4"
+futures-util = "0.3.4"
