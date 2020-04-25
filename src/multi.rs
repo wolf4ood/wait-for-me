@@ -107,4 +107,47 @@ mod tests {
 
         pool.run();
     }
+
+    #[test]
+    fn multi_latch_no_wait_test() {
+        let mut pool = LocalPool::new();
+
+        let spawner = pool.spawner();
+        let latch = CountDownLatch::new(100);
+
+        for _ in 0..200 {
+            let latch1 = latch.clone();
+            spawner
+                .spawn(async move { latch1.count_down().await.unwrap() })
+                .unwrap();
+        }
+
+        pool.run();
+    }
+
+    #[test]
+    fn multi_latch_post_wait_test() {
+        let mut pool = LocalPool::new();
+
+        let spawner = pool.spawner();
+        let latch = CountDownLatch::new(100);
+
+        for _ in 0..200 {
+            let latch1 = latch.clone();
+            spawner
+                .spawn(async move { latch1.count_down().await.unwrap() })
+                .unwrap();
+        }
+
+        pool.run();
+
+        for _ in 0..100 {
+            let latch1 = latch.clone();
+            spawner
+                .spawn(async move { latch1.wait().await.unwrap() })
+                .unwrap();
+        }
+
+        pool.run();
+    }
 }
