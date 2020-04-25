@@ -1,4 +1,5 @@
+#![forbid(unsafe_code)]
 pub mod oneshot;
 
-#[cfg(features = "multi")]
+#[cfg(feature = "multi")]
 pub mod multi;

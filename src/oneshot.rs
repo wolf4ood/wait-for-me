@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 use std::future::Future;
 use std::sync::{Arc, Mutex};
 
