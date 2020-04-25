@@ -13,4 +13,4 @@ futures-executor = "0.3.4"
 futures-util = "0.3.4"
 
 [features]
-multiple = ["broadcaster"]
+multi = ["broadcaster"]

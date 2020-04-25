@@ -1,4 +1,4 @@
 pub mod oneshot;
 
-#[cfg(features = "multiple")]
-pub mod multiple;
+#[cfg(features = "multi")]
+pub mod multi;
