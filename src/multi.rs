@@ -19,7 +19,6 @@ impl CountDownLatch {
     }
     pub async fn wait(&self) -> Result<(), ()> {
         if self.count().await > 0 {
-            println!("Waiting");
             self.channel.clone().recv().await;
         }
         Ok(())
@@ -34,7 +33,6 @@ impl CountDownLatch {
                     if prev != n {
                         continue;
                     } else if prev == 1 {
-                        println!("Signal {}", prev);
                         self.channel.send(&()).await.unwrap();
                         break;
                     }
