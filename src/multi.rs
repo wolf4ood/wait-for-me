@@ -19,7 +19,8 @@ impl CountDownLatch {
     }
     pub async fn wait(&self) -> Result<(), ()> {
         if self.count().await > 0 {
-            self.channel.clone().recv().await;   
+            println!("Waiting");
+            self.channel.clone().recv().await;
         }
         Ok(())
     }
@@ -30,9 +31,10 @@ impl CountDownLatch {
                 n @ _ if n > 0 => {
                     let next = n - 1;
                     let prev = self.count.compare_and_swap(n, next, Ordering::SeqCst);
-                    if prev == n {
+                    if prev != n {
                         continue;
                     } else if prev == 1 {
+                        println!("Signal {}", prev);
                         self.channel.send(&()).await.unwrap();
                         break;
                     }
