@@ -1,55 +1,84 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::task::{Context, Poll, Waker};
 
-use broadcaster::BroadcastChannel;
+use crossbeam::queue::ArrayQueue;
 
+struct WaitFuture(CountDownLatch);
+
+impl Future for WaitFuture {
+    type Output = Result<(), ()>;
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = Pin::get_mut(self);
+        this.0.with_lock(|latch| {
+            if latch.count.load(Ordering::Relaxed) > 0 {
+                latch.waiters.push(cx.waker().clone()).unwrap();
+                Poll::Pending
+            } else {
+                Poll::Ready(Ok(()))
+            }
+        })
+    }
+}
 impl CountDownLatch {
     pub fn new(count: usize) -> CountDownLatch {
-        let channel = BroadcastChannel::new();
+        
+        let counter = Arc::new(AtomicUsize::new(count));
+        let locked = Arc::new(AtomicBool::new(false));
 
-        let count = Arc::new(AtomicUsize::new(count));
         CountDownLatch {
-            count: count,
-            channel: channel,
+            locked: locked,
+            count: counter,
+            waiters: Arc::new(ArrayQueue::new(count)),
         }
     }
 
     pub async fn count(&self) -> usize {
-        self.count.load(Ordering::SeqCst)
+        self.count.load(Ordering::Relaxed)
     }
-    pub async fn wait(&self) -> Result<(), ()> {
-        if self.count().await > 0 {
-            self.channel.clone().recv().await;
+
+
+    pub fn wait(&self) -> impl Future<Output = Result<(), ()>> {
+        WaitFuture(self.clone())
+    }
+
+    pub fn with_lock<T, R>(&self, cb: T) -> R
+    where
+        T: FnOnce(&CountDownLatch) -> R,
+    {
+        loop {
+            if !self.locked.compare_and_swap(false, true, Ordering::Acquire) {
+                break;
+            }
         }
-        Ok(())
+        let ret = cb(self);
+
+        self.locked.store(false, Ordering::Release);
+        ret
     }
 
     pub async fn count_down(&self) -> Result<(), ()> {
-        loop {
-            match self.count().await {
-                n @ _ if n > 0 => {
-                    let next = n - 1;
-                    let prev = self.count.compare_and_swap(n, next, Ordering::SeqCst);
-                    if prev != n {
-                        continue;
-                    } else if prev == 1 {
-                        self.channel.send(&()).await.unwrap();
-                        break;
+        self.with_lock(|latch| {
+            if latch.count.load(Ordering::Relaxed) > 0 {
+                let prev = latch.count.fetch_sub(1, Ordering::Relaxed);
+                if prev == 1 {
+                    while let Ok(e) = self.waiters.pop() {
+                        e.wake();
                     }
                 }
-                _ => {
-                    break;
-                }
             }
-        }
+        });
         Ok(())
     }
 }
 
 #[derive(Clone)]
 pub struct CountDownLatch {
+    locked: Arc<AtomicBool>,
     count: Arc<AtomicUsize>,
-    channel: BroadcastChannel<()>,
+    waiters: Arc<ArrayQueue<Waker>>,
 }
 
 #[cfg(test)]
