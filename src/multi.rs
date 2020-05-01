@@ -16,8 +16,8 @@ impl Future for WaitFuture {
         let this = Pin::get_mut(self);
         this.0.with_lock(|latch| {
             if latch.count.load(Ordering::SeqCst) > 0 {
-                let waiter = unsafe { &mut *latch.waiters.get() };
-                waiter.push(cx.waker().clone());
+                let waiters = unsafe { &mut *latch.waiters.get() };
+                waiters.push(cx.waker().clone());
                 Poll::Pending
             } else {
                 Poll::Ready(Ok(()))
