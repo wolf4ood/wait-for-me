@@ -1,7 +1,7 @@
 use std::cell::UnsafeCell;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{spin_loop_hint, AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 
@@ -49,11 +49,12 @@ impl CountDownLatch {
     where
         T: FnOnce(&CountDownLatch) -> R,
     {
-        loop {
-            if !self.locked.compare_and_swap(false, true, Ordering::Acquire) {
-                break;
+        while self.locked.compare_and_swap(false, true, Ordering::Acquire) != false {
+            while self.locked.load(Ordering::Relaxed) {
+                spin_loop_hint();
             }
         }
+
         let ret = cb(self);
 
         self.locked.store(false, Ordering::Release);
