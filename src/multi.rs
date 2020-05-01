@@ -1,20 +1,23 @@
+use std::cell::UnsafeCell;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 
-use crossbeam::queue::ArrayQueue;
-
 struct WaitFuture(CountDownLatch);
+
+unsafe impl Send for CountDownLatch {}
+unsafe impl Sync for CountDownLatch {}
 
 impl Future for WaitFuture {
     type Output = Result<(), ()>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = Pin::get_mut(self);
         this.0.with_lock(|latch| {
-            if latch.count.load(Ordering::Relaxed) > 0 {
-                latch.waiters.push(cx.waker().clone()).unwrap();
+            if latch.count.load(Ordering::SeqCst) > 0 {
+                let waiter = unsafe { &mut *latch.waiters.get() };
+                waiter.push(cx.waker().clone());
                 Poll::Pending
             } else {
                 Poll::Ready(Ok(()))
@@ -24,21 +27,19 @@ impl Future for WaitFuture {
 }
 impl CountDownLatch {
     pub fn new(count: usize) -> CountDownLatch {
-        
         let counter = Arc::new(AtomicUsize::new(count));
         let locked = Arc::new(AtomicBool::new(false));
 
         CountDownLatch {
             locked: locked,
             count: counter,
-            waiters: Arc::new(ArrayQueue::new(count)),
+            waiters: Arc::new(UnsafeCell::new(Vec::with_capacity(count))),
         }
     }
 
     pub async fn count(&self) -> usize {
-        self.count.load(Ordering::Relaxed)
+        self.count.load(Ordering::SeqCst)
     }
-
 
     pub fn wait(&self) -> impl Future<Output = Result<(), ()>> {
         WaitFuture(self.clone())
@@ -61,10 +62,11 @@ impl CountDownLatch {
 
     pub async fn count_down(&self) -> Result<(), ()> {
         self.with_lock(|latch| {
-            if latch.count.load(Ordering::Relaxed) > 0 {
-                let prev = latch.count.fetch_sub(1, Ordering::Relaxed);
+            if latch.count.load(Ordering::SeqCst) > 0 {
+                let prev = latch.count.fetch_sub(1, Ordering::SeqCst);
                 if prev == 1 {
-                    while let Ok(e) = self.waiters.pop() {
+                    let waiters = unsafe { &mut *latch.waiters.get() };
+                    while let Some(e) = waiters.pop() {
                         e.wake();
                     }
                 }
@@ -78,7 +80,7 @@ impl CountDownLatch {
 pub struct CountDownLatch {
     locked: Arc<AtomicBool>,
     count: Arc<AtomicUsize>,
-    waiters: Arc<ArrayQueue<Waker>>,
+    waiters: Arc<UnsafeCell<Vec<Waker>>>,
 }
 
 #[cfg(test)]
