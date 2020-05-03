@@ -195,4 +195,33 @@ mod tests {
 
         pool.run();
     }
+
+    #[test]
+    fn latch_count_test() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let mut pool = LocalPool::new();
+        let pre_counter = Arc::new(AtomicUsize::new(0));
+        let post_counter = Arc::new(AtomicUsize::new(0));
+
+        let spawner = pool.spawner();
+        let latch = CountDownLatch::new(1);
+
+        let latch1 = latch.clone();
+        let pre_counter1 = pre_counter.clone();
+        let post_counter1 = post_counter.clone();
+        spawner
+            .spawn(async move {
+                pre_counter1.store(latch1.count().await, Ordering::Relaxed);
+                latch1.count_down().await;
+                post_counter1.store(latch1.count().await, Ordering::Relaxed);
+            })
+            .unwrap();
+
+        pool.run();
+
+        assert_eq!(1, pre_counter.load(Ordering::Relaxed));
+        assert_eq!(0, post_counter.load(Ordering::Relaxed));
+    }
 }
