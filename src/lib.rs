@@ -50,12 +50,12 @@ impl CountDownLatch {
     }
 
     /// Cause the current task to wait until the counter reaches zero
-    pub fn wait(&self) -> impl Future<Output = Result<(), ()>> {
+    pub fn wait(&self) -> impl Future<Output = ()> {
         WaitFuture(self.clone())
     }
 
     /// Decrement the counter of one unit. If the counter reaches zero all the waiting tasks are released.
-    pub async fn count_down(&self) -> Result<(), ()> {
+    pub async fn count_down(&self) {
         let mut state = self.state.lock();
 
         match state.count {
@@ -70,22 +70,20 @@ impl CountDownLatch {
             }
             _ => {}
         };
-
-        Ok(())
     }
 }
 
 struct WaitFuture(CountDownLatch);
 
 impl Future for WaitFuture {
-    type Output = Result<(), ()>;
+    type Output = ();
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut state = self.0.state.lock();
         if state.count > 0 {
             state.waiters.push(cx.waker().clone());
             Poll::Pending
         } else {
-            Poll::Ready(Ok(()))
+            Poll::Ready(())
         }
     }
 }
@@ -111,24 +109,24 @@ mod tests {
         let latch = CountDownLatch::new(2);
         let latch1 = latch.clone();
         spawner
-            .spawn(async move { latch1.count_down().await.unwrap() })
+            .spawn(async move { latch1.count_down().await })
             .unwrap();
 
         let latch2 = latch.clone();
         spawner
-            .spawn(async move { latch2.count_down().await.unwrap() })
+            .spawn(async move { latch2.count_down().await })
             .unwrap();
 
         let latch3 = latch.clone();
         spawner
             .spawn(async move {
-                latch3.wait().await.unwrap();
+                latch3.wait().await;
             })
             .unwrap();
 
         spawner
             .spawn(async move {
-                latch.wait().await.unwrap();
+                latch.wait().await;
             })
             .unwrap();
 
@@ -145,15 +143,13 @@ mod tests {
         for _ in 0..200 {
             let latch1 = latch.clone();
             spawner
-                .spawn(async move { latch1.count_down().await.unwrap() })
+                .spawn(async move { latch1.count_down().await })
                 .unwrap();
         }
 
         for _ in 0..100 {
             let latch1 = latch.clone();
-            spawner
-                .spawn(async move { latch1.wait().await.unwrap() })
-                .unwrap();
+            spawner.spawn(async move { latch1.wait().await }).unwrap();
         }
 
         pool.run();
@@ -169,7 +165,7 @@ mod tests {
         for _ in 0..200 {
             let latch1 = latch.clone();
             spawner
-                .spawn(async move { latch1.count_down().await.unwrap() })
+                .spawn(async move { latch1.count_down().await })
                 .unwrap();
         }
 
@@ -186,7 +182,7 @@ mod tests {
         for _ in 0..200 {
             let latch1 = latch.clone();
             spawner
-                .spawn(async move { latch1.count_down().await.unwrap() })
+                .spawn(async move { latch1.count_down().await })
                 .unwrap();
         }
 
@@ -194,9 +190,7 @@ mod tests {
 
         for _ in 0..100 {
             let latch1 = latch.clone();
-            spawner
-                .spawn(async move { latch1.wait().await.unwrap() })
-                .unwrap();
+            spawner.spawn(async move { latch1.wait().await }).unwrap();
         }
 
         pool.run();

@@ -8,10 +8,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for _ in 0..10 {
         let latch1 = latch.clone();
         Task::spawn(async move {
-            latch1.count_down().await.unwrap();
+            latch1.count_down().await;
         }).detach();
     }
-    latch.wait().await.unwrap();
+    latch.wait().await;
 
 
     Ok(())
