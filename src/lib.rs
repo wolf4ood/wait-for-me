@@ -1,3 +1,26 @@
+//! This library provide an implementation of an async [`CountDownLatch`],
+//! which keeps a counter syncronized via [`Mutex`] in it's internal state and allows tasks to wait until
+//! the counter reaches zero.
+//!
+//! # Example
+//! ```rust,no_run
+//! use countdownlatch::CountDownLatch;
+//! use smol::{self,Task};
+//! fn main() -> Result<(), Box<std::error::Error>> {
+//!    smol::run(async {
+//!         let latch = CountDownLatch::new(1);
+//!         let latch1 = latch.clone();
+//!         Task::spawn(async move {
+//!             latch1.count_down().await;
+//!         }).detach();
+//!         latch.wait().await;
+//!         Ok(())
+//!    })
+//!
+//!}
+//! ```
+//! [`Mutex`][piper::Mutex]
+
 use piper::Mutex;
 use std::future::Future;
 use std::pin::Pin;
@@ -10,6 +33,7 @@ struct CountDownState {
 }
 
 impl CountDownLatch {
+    /// Creates a new [`CountDownLatch`] with a given count.
     pub fn new(count: usize) -> CountDownLatch {
         CountDownLatch {
             state: Arc::new(Mutex::new(CountDownState {
@@ -19,15 +43,18 @@ impl CountDownLatch {
         }
     }
 
+    /// Returns the current count.
     pub async fn count(&self) -> usize {
         let state = self.state.lock();
         state.count
     }
 
+    /// Cause the current task to wait until the counter reaches zero
     pub fn wait(&self) -> impl Future<Output = Result<(), ()>> {
         WaitFuture(self.clone())
     }
 
+    /// Decrement the counter of one unit. If the counter reaches zero all the waiting tasks are released.
     pub async fn count_down(&self) -> Result<(), ()> {
         let mut state = self.state.lock();
 
@@ -62,7 +89,8 @@ impl Future for WaitFuture {
         }
     }
 }
-
+/// A syncronization primitive that allow one or more tasks to wait untile the given counter reaches zero.
+/// This is an async port of [CountDownLatch](https://docs.oracle.com/javase/7/docs/api/java/util/concurrent/CountDownLatch.html) in Java.
 #[derive(Clone)]
 pub struct CountDownLatch {
     state: Arc<Mutex<CountDownState>>,
