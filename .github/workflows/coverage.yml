@@ -1,0 +1,45 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+        - master
+
+jobs:
+  grcov:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        rust: [nightly]
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install latest ${{ matrix.rust }}
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: ${{ matrix.rust }}
+            profile: minimal
+            override: true
+
+      - name: Run cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --all --all-features --no-fail-fast
+        env:
+          CARGO_INCREMENTAL: '0'
+          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
+      - name: Run grcov
+        id: coverage
+        uses: actions-rs/grcov@v0.1
+      - name: Coveralls upload
+        uses: coverallsapp/github-action@v1.1.1
+        with:
+            github-token: ${{ secrets.GITHUB_TOKEN }}
+            path-to-lcov: ${{ steps.coverage.outputs.report }}
+            flag-name: test-${{ matrix.os }}
+            parallel: true    
