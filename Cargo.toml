@@ -12,4 +12,8 @@ piper = { version = "0.1" }
 futures-executor = "0.3.4"
 futures-util = "0.3.4"
 async-std = { version = "1.5.0", features = ["attributes"] }
+tokio = { version = "0.2", features = ["full"] }
+smol = { version = "0.1" }
+smol-potat = { version = "0.2" }
+
 
