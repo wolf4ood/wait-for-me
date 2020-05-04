@@ -5,6 +5,10 @@ authors = ["wolf4ood <enrico.risa@gmail.com>"]
 edition = "2018"
 license = "Apache-2.0"
 description= "Async CountDownLatch"
+repository = "https://github.com/wolf4ood/wait-for-me"
+keywords = ["async", "synchronization","countdown"]
+categories = ["Asynchronous"]
+readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
