@@ -47,7 +47,7 @@ wait-for-me = "0.1"
 with [smol](https://github.com/stjepang/smol)
 
 
-```
+```rust
 use wait_for_me::CountDownLatch;
 use smol::Task;
 
