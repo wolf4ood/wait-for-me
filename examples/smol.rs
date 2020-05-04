@@ -1,4 +1,4 @@
-use countdownlatch::CountDownLatch;
+use wait_for_me::CountDownLatch;
 use smol::Task;
 
 

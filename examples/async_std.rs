@@ -1,5 +1,5 @@
 use async_std::{self, task};
-use countdownlatch::CountDownLatch;
+use wait_for_me::CountDownLatch;
 
 
 

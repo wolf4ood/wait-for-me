@@ -4,7 +4,7 @@
 //!
 //! # Example
 //! ```rust,no_run
-//! use countdownlatch::CountDownLatch;
+//! use wait_for_me::CountDownLatch;
 //! use smol::{self,Task};
 //! fn main() -> Result<(), Box<std::error::Error>> {
 //!    smol::run(async {
