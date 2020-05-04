@@ -1,5 +1,5 @@
 [package]
-name = "wait_for_me"
+name = "wait-for-me"
 version = "0.1.0"
 authors = ["wolf4ood <enrico.risa@gmail.com>"]
 edition = "2018"
