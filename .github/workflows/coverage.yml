@@ -25,6 +25,12 @@ jobs:
             profile: minimal
             override: true
 
+
+      - name: Run cargo clean       
+      - uses: actions-rs/cargo@v1
+        with:
+          command: clean       
+
       - name: Run cargo test
         uses: actions-rs/cargo@v1
         with:
