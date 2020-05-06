@@ -1,8 +1,6 @@
 use async_std::{self, task};
 use wait_for_me::CountDownLatch;
 
-
-
 #[async_std::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let latch = CountDownLatch::new(10);
@@ -14,7 +12,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     latch.wait().await;
 
-
     Ok(())
 }
-

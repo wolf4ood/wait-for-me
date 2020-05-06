@@ -1,5 +1,5 @@
 //! This library provide an implementation of an async [`CountDownLatch`],
-//! which keeps a counter syncronized via [`Mutex`] in it's internal state and allows tasks to wait until
+//! which keeps a counter syncronized via [`Mutex`][piper::Mutex] in it's internal state and allows tasks to wait until
 //! the counter reaches zero.
 //!
 //! # Example
@@ -19,13 +19,41 @@
 //!
 //!}
 //! ```
-//! [`Mutex`][piper::Mutex]
+//!
+//! With timeout
+//!
+//! ```rust,no_run
+//! use wait_for_me::CountDownLatch;
+//! use smol::{Task,Timer};
+//! use std::time::Duration;
+//! #[smol_potat::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!    let latch = CountDownLatch::new(10);
+//!    for _ in 0..10 {
+//!        let latch1 = latch.clone();
+//!        Task::spawn(async move {
+//!            Timer::after(Duration::from_secs(3)).await;
+//!            latch1.count_down().await;
+//!        }).detach();
+//!    }
+//!    let result = latch.wait_for(Duration::from_secs(1)).await;
+//!
+//!    assert_eq!(false,result);
+//!
+//!    Ok(())
+//!}
+//!```
+//!
 
+use futures;
+use futures::future::Either;
+use futures_timer::Delay;
 use piper::Mutex;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
+use std::time::Duration;
 
 struct CountDownState {
     count: usize,
@@ -52,6 +80,17 @@ impl CountDownLatch {
     /// Cause the current task to wait until the counter reaches zero
     pub fn wait(&self) -> impl Future<Output = ()> {
         WaitFuture(self.clone())
+    }
+
+    /// Cause the current task to wait until the counter reaches zero with timeout.
+    ///
+    /// If the specified timeout elapesed `false` is retured. Otherwise `true`.
+    pub async fn wait_for(&self, timeout: Duration) -> bool {
+        let delay = Delay::new(timeout);
+        match futures::future::select(delay, WaitFuture(self.clone())).await {
+            Either::Left(_) => false,
+            Either::Right(_) => true,
+        }
     }
 
     /// Decrement the counter of one unit. If the counter reaches zero all the waiting tasks are released.
@@ -100,9 +139,10 @@ mod tests {
     use super::CountDownLatch;
     use futures_executor::LocalPool;
     use futures_util::task::SpawnExt;
+    use std::time::Duration;
 
     #[test]
-    fn multi_latch_test() {
+    fn countdownlatch_test() {
         let mut pool = LocalPool::new();
 
         let spawner = pool.spawner();
@@ -134,7 +174,7 @@ mod tests {
     }
 
     #[test]
-    fn multi_latch_concurrent_test() {
+    fn countdownlatch_concurrent_test() {
         let mut pool = LocalPool::new();
 
         let spawner = pool.spawner();
@@ -156,7 +196,7 @@ mod tests {
     }
 
     #[test]
-    fn multi_latch_no_wait_test() {
+    fn countdownlatch_no_wait_test() {
         let mut pool = LocalPool::new();
 
         let spawner = pool.spawner();
@@ -173,7 +213,7 @@ mod tests {
     }
 
     #[test]
-    fn multi_latch_post_wait_test() {
+    fn countdownlatch_post_wait_test() {
         let mut pool = LocalPool::new();
 
         let spawner = pool.spawner();
@@ -197,7 +237,7 @@ mod tests {
     }
 
     #[test]
-    fn latch_count_test() {
+    fn countdownlatch_count_test() {
         use std::sync::atomic::{AtomicUsize, Ordering};
         use std::sync::Arc;
 
@@ -223,5 +263,42 @@ mod tests {
 
         assert_eq!(1, pre_counter.load(Ordering::Relaxed));
         assert_eq!(0, post_counter.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn wait_with_timeout_test() {
+        use futures_timer::Delay;
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let mut pool = LocalPool::new();
+        let counter = Arc::new(AtomicUsize::new(1));
+        let no_timeout = Arc::new(AtomicBool::new(true));
+
+        let spawner = pool.spawner();
+        let latch = CountDownLatch::new(1);
+
+        let latch1 = latch.clone();
+        spawner
+            .spawn(async move {
+                Delay::new(Duration::from_secs(3)).await;
+                latch1.count_down().await;
+            })
+            .unwrap();
+
+        let counter1 = counter.clone();
+        let no_timeout1 = no_timeout.clone();
+        spawner
+            .spawn(async move {
+                let result = latch.wait_for(Duration::from_secs(1)).await;
+                counter1.store(latch.count().await, Ordering::Relaxed);
+                no_timeout1.store(result, Ordering::Relaxed);
+            })
+            .unwrap();
+
+        pool.run();
+
+        assert_eq!(1, counter.load(Ordering::Relaxed));
+        assert_eq!(false, no_timeout.load(Ordering::Relaxed));
     }
 }
