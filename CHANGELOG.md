@@ -11,4 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+[0.1.1] - 2020-05-07
+
+### Added
+
+- [#1](https://github.com/wolf4ood/wait-for-me/issues/1) Added wait API with timeout.
+
+[0.1.0] - 2020-05-05
+
+### Added
+
+- Initial Release
+
 
