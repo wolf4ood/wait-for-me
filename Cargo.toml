@@ -1,6 +1,6 @@
 [package]
 name = "wait-for-me"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["wolf4ood <enrico.risa@gmail.com>"]
 edition = "2018"
 license = "Apache-2.0"
@@ -14,7 +14,6 @@ readme = "README.md"
 [dependencies]
 piper = { version = "0.1" }
 futures-timer="3.0"
-pin-project-lite = "0.1.4"
 futures="0.3"
 
 [dev-dependencies]
