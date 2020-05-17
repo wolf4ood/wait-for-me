@@ -50,7 +50,7 @@ jobs:
             --ignore-not-existing
             --ignore "/*"
             -o ./target/lcov.info
-            ./target/debug/  # Note that you need to point grcov to the target directory with build artifacts
+            ./target/debug/
       - name: Coveralls upload
         uses: coverallsapp/github-action@v1.1.1
         with:
