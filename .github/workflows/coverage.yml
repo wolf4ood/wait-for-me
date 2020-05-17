@@ -41,7 +41,7 @@ jobs:
           RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
       - name: Run grcov
         id: coverage
-        uses: actions-rs/grcov@v0.1
+        uses: actions-rs/grcov@0.2-proto
       - name: Coveralls upload
         uses: coverallsapp/github-action@v1.1.1
         with:
