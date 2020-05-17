@@ -55,7 +55,7 @@ jobs:
         uses: coverallsapp/github-action@v1.1.1
         with:
             github-token: ${{ secrets.GITHUB_TOKEN }}
-            path-to-lcov: ${{ steps.coverage.outputs.report }}
+            path-to-lcov: ${{ steps.coverage.outputs.output-path }}
             flag-name: test-${{ matrix.os }}
             parallel: true    
   grcov_finalize:
