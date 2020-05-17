@@ -46,7 +46,6 @@ jobs:
           args: >
             -t lcov
             --llvm
-            --branch
             --ignore-not-existing
             --ignore "/*"
             -o ./target/lcov.info
