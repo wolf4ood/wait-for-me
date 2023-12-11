@@ -45,7 +45,6 @@
 //!```
 //!
 
-use futures;
 use futures::future::Either;
 use futures_timer::Delay;
 use std::future::Future;
@@ -82,7 +81,7 @@ impl CountDownLatch {
     pub fn wait(&self) -> impl Future<Output = ()> {
         WaitFuture {
             latch: self.clone(),
-            state: None,
+            state_lock: None,
         }
     }
 
@@ -102,23 +101,23 @@ impl CountDownLatch {
         let mut state = self.state.lock().await;
 
         match state.count {
+            0 => {}
             1 => {
                 state.count -= 1;
                 for waker in state.wakers.drain(..) {
                     waker.wake();
                 }
             }
-            n @ _ if n > 0 => {
+            _ => {
                 state.count -= 1;
             }
-            _ => {}
         };
     }
 }
 
 struct WaitFuture {
     latch: CountDownLatch,
-    state: Option<Box<LockArc<CountDownState>>>,
+    state_lock: Option<Box<LockArc<CountDownState>>>,
 }
 
 impl Future for WaitFuture {
@@ -126,24 +125,35 @@ impl Future for WaitFuture {
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         loop {
-            match self.state.take() {
-                Some(mut state) => {
-                    let mut guard =
-                        futures::ready!(unsafe { Pin::new_unchecked(state.as_mut()) }.poll(cx));
-                    if guard.count > 0 {
-                        for waker in guard.wakers.iter() {
-                            if waker.will_wake(cx.waker()) {
-                                return Poll::Pending
+            match self.state_lock.take() {
+                Some(mut state_lock) => {
+                    return match unsafe { Pin::new_unchecked(state_lock.as_mut()) }.poll(cx) {
+                        Poll::Ready(mut guard) => {
+                            if guard.count > 0 {
+                                for waker in guard.wakers.iter() {
+                                    if waker.will_wake(cx.waker()) {
+                                        return Poll::Pending
+                                    }
+                                }
+                                guard.wakers.push(cx.waker().clone());
+                                Poll::Pending
+                            } else {
+                                for waker in guard.wakers.drain(..) {
+                                    waker.wake();
+                                }
+                                Poll::Ready(())
                             }
                         }
-                        guard.wakers.push(cx.waker().clone());
-                        return Poll::Pending;
-                    } else {
-                        return Poll::Ready(());
+                        Poll::Pending => {
+                            // Do not drop state_lock otherwise our waker from the poll call
+                            // would be dropped as well.
+                            self.state_lock = Some(state_lock);
+                            Poll::Pending
+                        }
                     }
                 }
                 None => {
-                    self.state = Some(Box::new(self.latch.state.lock_arc()));
+                    self.state_lock = Some(Box::new(self.latch.state.lock_arc()));
                 }
             }
         }
@@ -160,9 +170,10 @@ pub struct CountDownLatch {
 #[cfg(test)]
 mod tests {
     use super::CountDownLatch;
-    use futures_executor::LocalPool;
+    use futures_executor::{LocalPool};
     use futures_util::task::SpawnExt;
     use std::time::Duration;
+    use futures_util::future::{join, join_all};
 
     #[test]
     fn countdownlatch_test() {
@@ -213,6 +224,20 @@ mod tests {
             .unwrap();
 
         pool.run();
+    }
+
+    #[test]
+    fn countdownlatch_pre_wait_test_with_async_std() {
+        use async_std::task;
+
+        let latch = CountDownLatch::new(1);
+
+        let latch1 = latch.clone();
+        let handle1 = task::spawn(async move { latch1.wait().await });
+
+        let handle2 = task::spawn(async move { latch.count_down().await });
+
+        task::block_on(join(handle1, handle2));
     }
 
     #[test]
@@ -375,5 +400,38 @@ mod tests {
         }
 
         pool.run();
+    }
+
+    #[test]
+    fn stress_test_with_async_std() {
+        use async_std::task;
+
+        let n = 10_000;
+        let latch = CountDownLatch::new(n);
+
+        let mut handles = Vec::with_capacity(5 * n);
+
+        for _ in 0..(2 * n) {
+            let latch1 = latch.clone();
+            handles.push(task::spawn(async move {
+                latch1.wait().await;
+            }));
+        }
+
+        for _ in 0..n {
+            let latch2 = latch.clone();
+            handles.push(task::spawn(async move {
+                latch2.count_down().await;
+            }));
+        }
+
+        for _ in 0..(2 * n) {
+            let latch3 = latch.clone();
+            handles.push(task::spawn(async move {
+                latch3.wait().await;
+            }));
+        }
+
+        async_std::task::block_on(join_all(handles));
     }
 }
