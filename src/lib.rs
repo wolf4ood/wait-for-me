@@ -45,28 +45,30 @@
 //!```
 //!
 
-use async_lock::{Lock, LockGuard};
 use futures;
 use futures::future::Either;
 use futures_timer::Delay;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 use std::time::Duration;
+use async_lock::{Mutex};
+use async_lock::futures::{LockArc};
 
 struct CountDownState {
     count: usize,
-    waiters: Vec<Waker>,
+    wakers: Vec<Waker>,
 }
 
 impl CountDownLatch {
     /// Creates a new [`CountDownLatch`] with a given count.
     pub fn new(count: usize) -> CountDownLatch {
         CountDownLatch {
-            state: Lock::new(CountDownState {
+            state: Arc::new(Mutex::new(CountDownState {
                 count,
-                waiters: vec![],
-            }),
+                wakers: vec![],
+            })),
         }
     }
 
@@ -78,7 +80,10 @@ impl CountDownLatch {
 
     /// Cause the current task to wait until the counter reaches zero
     pub fn wait(&self) -> impl Future<Output = ()> {
-        WaitFuture(self.clone(), None)
+        WaitFuture {
+            latch: self.clone(),
+            state: None,
+        }
     }
 
     /// Cause the current task to wait until the counter reaches zero with timeout.
@@ -86,7 +91,7 @@ impl CountDownLatch {
     /// If the specified timeout elapesed `false` is retured. Otherwise `true`.
     pub async fn wait_for(&self, timeout: Duration) -> bool {
         let delay = Delay::new(timeout);
-        match futures::future::select(delay, WaitFuture(self.clone(), None)).await {
+        match futures::future::select(delay, self.wait()).await {
             Either::Left(_) => false,
             Either::Right(_) => true,
         }
@@ -99,8 +104,8 @@ impl CountDownLatch {
         match state.count {
             1 => {
                 state.count -= 1;
-                while let Some(e) = state.waiters.pop() {
-                    e.wake();
+                for waker in state.wakers.drain(..) {
+                    waker.wake();
                 }
             }
             n @ _ if n > 0 => {
@@ -111,40 +116,45 @@ impl CountDownLatch {
     }
 }
 
-struct WaitFuture(
-    CountDownLatch,
-    Option<Box<dyn Future<Output = LockGuard<CountDownState>> + Send>>,
-);
+struct WaitFuture {
+    latch: CountDownLatch,
+    state: Option<Box<LockArc<CountDownState>>>,
+}
 
 impl Future for WaitFuture {
     type Output = ();
+
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         loop {
-            match self.1.take() {
-                Some(mut p) => {
+            match self.state.take() {
+                Some(mut state) => {
                     let mut guard =
-                        futures::ready!(unsafe { Pin::new_unchecked(p.as_mut()) }.poll(cx));
+                        futures::ready!(unsafe { Pin::new_unchecked(state.as_mut()) }.poll(cx));
                     if guard.count > 0 {
-                        guard.waiters.push(cx.waker().clone());
+                        for waker in guard.wakers.iter() {
+                            if waker.will_wake(cx.waker()) {
+                                return Poll::Pending
+                            }
+                        }
+                        guard.wakers.push(cx.waker().clone());
                         return Poll::Pending;
                     } else {
                         return Poll::Ready(());
                     }
                 }
                 None => {
-                    let lock = self.0.state.clone();
-                    let res = async move { lock.lock().await };
-                    self.1 = Some(Box::new(res));
+                    self.state = Some(Box::new(self.latch.state.lock_arc()));
                 }
             }
         }
     }
 }
-/// A syncronization primitive that allow one or more tasks to wait untile the given counter reaches zero.
+
+/// A synchronization primitive that allows one or more tasks to wait until the given counter reaches zero.
 /// This is an async port of [CountDownLatch](https://docs.oracle.com/javase/7/docs/api/java/util/concurrent/CountDownLatch.html) in Java.
 #[derive(Clone)]
 pub struct CountDownLatch {
-    state: Lock<CountDownState>,
+    state: Arc<Mutex<CountDownState>>,
 }
 
 #[cfg(test)]
