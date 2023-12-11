@@ -120,8 +120,8 @@ impl Future for WaitFuture {
     type Output = ();
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         loop {
-            match &mut self.1 {
-                Some(p) => {
+            match self.1.take() {
+                Some(mut p) => {
                     let mut guard =
                         futures::ready!(unsafe { Pin::new_unchecked(p.as_mut()) }.poll(cx));
                     if guard.count > 0 {
@@ -182,6 +182,25 @@ mod tests {
             .spawn(async move {
                 latch.wait().await;
             })
+            .unwrap();
+
+        pool.run();
+    }
+
+    #[test]
+    fn countdownlatch_pre_wait_test() {
+        let mut pool = LocalPool::new();
+
+        let spawner = pool.spawner();
+        let latch = CountDownLatch::new(1);
+
+        let latch1 = latch.clone();
+        spawner
+            .spawn(async move { latch1.wait().await })
+            .unwrap();
+
+        spawner
+            .spawn(async move { latch.count_down().await })
             .unwrap();
 
         pool.run();
