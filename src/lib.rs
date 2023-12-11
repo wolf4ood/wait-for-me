@@ -149,7 +149,6 @@ pub struct CountDownLatch {
 
 #[cfg(test)]
 mod tests {
-
     use super::CountDownLatch;
     use futures_executor::LocalPool;
     use futures_util::task::SpawnExt;
@@ -333,5 +332,38 @@ mod tests {
 
         assert_eq!(1, counter.load(Ordering::Relaxed));
         assert_eq!(false, no_timeout.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn stress_test() {
+        let mut pool = LocalPool::new();
+
+        let n = 10_000;
+        let latch = CountDownLatch::new(n);
+
+        let spawner = pool.spawner();
+
+        for _ in 0..(2 * n) {
+            let latch1 = latch.clone();
+            spawner.spawn(async move {
+                latch1.wait().await;
+            }).unwrap();
+        }
+
+        for _ in 0..n {
+            let latch2 = latch.clone();
+            spawner.spawn(async move {
+                latch2.count_down().await;
+            }).unwrap();
+        }
+
+        for _ in 0..(2 * n) {
+            let latch3 = latch.clone();
+            spawner.spawn(async move {
+                latch3.wait().await;
+            }).unwrap();
+        }
+
+        pool.run();
     }
 }
