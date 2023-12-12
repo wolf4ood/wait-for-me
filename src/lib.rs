@@ -181,7 +181,7 @@ pub struct CountDownLatch {
 #[cfg(test)]
 mod tests {
     use super::CountDownLatch;
-    use futures_executor::{LocalPool};
+    use futures_executor::{LocalPool, ThreadPool};
     use futures_util::task::SpawnExt;
     use std::time::Duration;
     use futures_util::future::{join, join_all};
@@ -238,17 +238,21 @@ mod tests {
     }
 
     #[test]
-    fn countdownlatch_pre_wait_test_with_async_std() {
-        use async_std::task;
+    fn countdownlatch_parallel_pre_wait_test() {
+        let pool = ThreadPool::builder().pool_size(4).create().unwrap();
 
         let latch = CountDownLatch::new(1);
 
         let latch1 = latch.clone();
-        let handle1 = task::spawn(async move { latch1.wait().await });
+        let handle1 = pool
+            .spawn_with_handle(async move { latch1.wait().await })
+            .unwrap();
 
-        let handle2 = task::spawn(async move { latch.count_down().await });
+        let handle2 = pool
+            .spawn_with_handle(async move { latch.count_down().await })
+            .unwrap();
 
-        task::block_on(join(handle1, handle2));
+        futures_executor::block_on(join(handle1, handle2));
     }
 
     #[test]
@@ -414,8 +418,8 @@ mod tests {
     }
 
     #[test]
-    fn stress_test_with_async_std() {
-        use async_std::task;
+    fn parallel_stress_test() {
+        let pool = ThreadPool::builder().pool_size(4).create().unwrap();
 
         let n = 10_000;
         let latch = CountDownLatch::new(n);
@@ -424,26 +428,26 @@ mod tests {
 
         for _ in 0..(2 * n) {
             let latch1 = latch.clone();
-            handles.push(task::spawn(async move {
+            handles.push(pool.spawn_with_handle(async move {
                 latch1.wait().await;
-            }));
+            }).unwrap());
         }
 
         for _ in 0..n {
             let latch2 = latch.clone();
-            handles.push(task::spawn(async move {
+            handles.push(pool.spawn_with_handle(async move {
                 latch2.count_down().await;
-            }));
+            }).unwrap());
         }
 
         for _ in 0..(2 * n) {
             let latch3 = latch.clone();
-            handles.push(task::spawn(async move {
+            handles.push(pool.spawn_with_handle(async move {
                 latch3.wait().await;
-            }));
+            }).unwrap());
         }
 
-        async_std::task::block_on(join_all(handles));
+        futures_executor::block_on(join_all(handles));
     }
 
     #[test]
