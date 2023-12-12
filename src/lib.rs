@@ -87,7 +87,7 @@ impl CountDownLatch {
 
     /// Cause the current task to wait until the counter reaches zero with timeout.
     ///
-    /// If the specified timeout elapesed `false` is retured. Otherwise `true`.
+    /// If the specified timeout elapsed `false` is returned. Otherwise `true`.
     pub async fn wait_for(&self, timeout: Duration) -> bool {
         let delay = Delay::new(timeout);
         match futures::future::select(delay, self.wait()).await {
@@ -112,6 +112,17 @@ impl CountDownLatch {
                 state.count -= 1;
             }
         };
+    }
+
+    /// Sets the internal count.
+    pub async fn set(&self, count: usize) {
+        let mut state = self.state.lock().await;
+        state.count = count;
+        if count == 0 {
+            for waker in state.wakers.drain(..) {
+                waker.wake();
+            }
+        }
     }
 }
 
@@ -433,5 +444,52 @@ mod tests {
         }
 
         async_std::task::block_on(join_all(handles));
+    }
+
+    #[test]
+    fn countdownlatch_set_zero_test() {
+        let mut pool = LocalPool::new();
+
+        let spawner = pool.spawner();
+        let latch = CountDownLatch::new(1);
+
+        let latch1 = latch.clone();
+        spawner.spawn(latch1.wait()).unwrap();
+
+        let latch2 = latch.clone();
+        spawner
+            .spawn(async move {
+                latch2.set(0).await;
+            })
+            .unwrap();
+
+        pool.run();
+    }
+
+    #[test]
+    fn countdownlatch_reuse_test() {
+        let mut pool = LocalPool::new();
+
+        let spawner = pool.spawner();
+        let latch = CountDownLatch::new(0);
+
+        let latch1 = latch.clone();
+        spawner
+            .spawn(async move {
+                latch1.set(1).await;
+            })
+            .unwrap();
+
+        pool.run();
+
+        let latch2 = latch.clone();
+        spawner.spawn(latch2.wait()).unwrap();
+
+        let latch3 = latch.clone();
+        spawner.spawn(async move {
+            latch3.count_down().await;
+        }).unwrap();
+
+        pool.run();
     }
 }
