@@ -99,27 +99,22 @@ impl CountDownLatch {
     /// Decrement the counter of one unit. If the counter reaches zero all the waiting tasks are released.
     pub async fn count_down(&self) {
         let mut state = self.state.lock().await;
-
-        match state.count {
-            0 => {}
-            1 => {
-                state.count -= 1;
-                for waker in state.wakers.drain(..) {
-                    waker.wake();
-                }
-            }
-            _ => {
-                state.count -= 1;
-            }
-        };
+        let count = state.count.saturating_sub(1);
+        state.set(count);
     }
 
     /// Sets the internal count.
     pub async fn set(&self, count: usize) {
         let mut state = self.state.lock().await;
-        state.count = count;
+        state.set(count);
+    }
+}
+
+impl CountDownState {
+    fn set(&mut self, count: usize) {
+        self.count = count;
         if count == 0 {
-            for waker in state.wakers.drain(..) {
+            for waker in self.wakers.drain(..) {
                 waker.wake();
             }
         }
