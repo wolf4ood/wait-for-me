@@ -1,16 +1,16 @@
-//! This library provide an implementation of an async [`CountDownLatch`],
-//! which keeps a counter syncronized via [`Lock`][async-lock::Lock] in it's internal state and allows tasks to wait until
+//! This library provides an implementation of an async [`CountDownLatch`],
+//! which keeps a counter synchronized via [`Lock`][async-lock::Lock] in it's internal state and allows tasks to wait until
 //! the counter reaches zero.
 //!
 //! # Example
 //! ```rust,no_run
 //! use wait_for_me::CountDownLatch;
 //! use smol::{self,Task};
-//! fn main() -> Result<(), Box<std::error::Error>> {
-//!    smol::run(async {
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!    smol::block_on(async {
 //!         let latch = CountDownLatch::new(1);
 //!         let latch1 = latch.clone();
-//!         Task::spawn(async move {
+//!         smol::spawn(async move {
 //!             latch1.count_down().await;
 //!         }).detach();
 //!         latch.wait().await;
@@ -31,7 +31,7 @@
 //!    let latch = CountDownLatch::new(10);
 //!    for _ in 0..10 {
 //!        let latch1 = latch.clone();
-//!        Task::spawn(async move {
+//!        smol::spawn(async move {
 //!            Timer::after(Duration::from_secs(3)).await;
 //!            latch1.count_down().await;
 //!        }).detach();
